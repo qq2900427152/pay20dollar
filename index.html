@@ -22,7 +22,10 @@
     <button onclick="calculateParlay()">計算</button>
     
     <h3 class="result" id="totalWinAmount">合計中奖金额：0 元</h3>
-    <div id="results"></div>
+    <h3>中奖组合</h3>
+    <div id="winResults"></div>
+    <h3>未中奖组合</h3>
+    <div id="loseResults"></div>
 
     <script>
         let teams = [];
@@ -31,9 +34,22 @@
             const teamDiv = document.createElement("div");
             teamDiv.innerHTML = `隊伍名稱：<input type='text' value=''>
                 賠率：<input type='number' step='0.01' value='2'>
-                賽果(1=勝, 0=敗)：<input type='number' min='0' max='1' value='1'>
+                狀況：<select onchange='updateMultiplierInput(this)'>
+                    <option value='1'>贏</option>
+                    <option value='0.5'>贏半</option>
+                    <option value='0'>和</option>
+                    <option value='-1'>輸</option>
+                    <option value='-0.5'>輸半</option>
+                </select>
+                倍率值：<input type='number' step='0.0001' value='1'>
                 <button onclick='this.parentNode.remove()'>刪除</button>`;
             document.getElementById("teams").appendChild(teamDiv);
+        }
+
+        function updateMultiplierInput(selectElem) {
+            let multiplierInput = selectElem.nextElementSibling;
+            let value = parseFloat(selectElem.value);
+            multiplierInput.value = value;
         }
 
         function calculateParlay() {
@@ -45,8 +61,9 @@
             inputs.forEach(div => {
                 let name = div.children[0].value.trim();
                 let odds = parseFloat(div.children[1].value);
-                let result = parseInt(div.children[2].value);
-                teams.push({ name, odds, result });
+                let result = parseFloat(div.children[2].value);
+                let multiplier = parseFloat(div.children[3].value);
+                teams.push({ name, odds, result, multiplier });
             });
             
             if (teams.length < parlaySize) {
@@ -57,38 +74,49 @@
             let combinations = getCombinations(teams, parlaySize);
             let betPerTicket = totalAmount / combinations.length;
             let totalWin = 0;
-            let resultHtml = "";
             let winBets = [], loseBets = [];
             
             combinations.forEach((comb, index) => {
                 let oddsProduct = 1;
                 let validBet = true;
-                let betDetails = comb.map(t => `${t.name} 賠率${t.odds}`).join("、");
+                let betDetails = comb.map(t => `${t.name} (${t.result === 0 ? 'Draw' : t.result > 0 ? 'Win' : 'Loss'} ${t.result})`).join("、");
                 
                 comb.forEach(t => {
-                    if (t.result === 0) validBet = false;
-                    oddsProduct *= t.odds;
+                    if (t.result === -1) validBet = false;
+                    if (t.result < 0) {
+                        oddsProduct *= 1 + (t.result); // 直接計算輸的比例
+                    } else if (t.result === 0) {
+                        oddsProduct *= 1; // 和局時不改變賠率
+                    } else {
+                        oddsProduct *= 1 + (t.odds - 1) * t.multiplier;
+                    }
                 });
-                
-                let winAmount = validBet ? (betPerTicket * oddsProduct) : 0;
+
+                // 無條件捨去第三位小數
+                let winAmount = validBet ? Math.floor(betPerTicket * oddsProduct * 1000) / 1000 : 0;
                 totalWin += winAmount;
-                let betHtml = `<tr class='${winAmount > 0 ? "win" : ""}'>
+                let betHtml = `<tr>
                     <td>${index + 1}</td>
                     <td>${betDetails}</td>
-                    <td>${oddsProduct.toFixed(2)}</td>
-                    <td>${betPerTicket.toFixed(2)}</td>
-                    <td>${winAmount.toFixed(2)}</td>
+                    <td>${Math.floor(oddsProduct * 1000) / 1000}</td>
+                    <td>${Math.floor(betPerTicket * 1000) / 1000}</td>
+                    <td>${winAmount.toFixed(3)}</td>
                 </tr>`;
                 
                 if (winAmount > 0) winBets.push(betHtml);
                 else loseBets.push(betHtml);
             });
             
-            document.getElementById("totalWinAmount").innerHTML = `合計中奖金额：${totalWin.toFixed(2)} 元`;
-            document.getElementById("results").innerHTML = `
+            document.getElementById("totalWinAmount").innerHTML = `合計中奖金额：${Math.floor(totalWin * 1000) / 1000} 元`;
+            document.getElementById("winResults").innerHTML = `
                 <table>
                     <tr><th>#</th><th>隊伍</th><th>總賠率</th><th>投注額</th><th>贏額</th></tr>
-                    ${winBets.join("")} ${loseBets.join("")}
+                    ${winBets.join("")}
+                </table>`;
+            document.getElementById("loseResults").innerHTML = `
+                <table>
+                    <tr><th>#</th><th>隊伍</th><th>總賠率</th><th>投注額</th><th>贏額</th></tr>
+                    ${loseBets.join("")}
                 </table>`;
         }
 
